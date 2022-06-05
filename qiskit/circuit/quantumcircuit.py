@@ -59,6 +59,27 @@ from .delay import Delay
 from .measure import Measure
 from .reset import Reset
 
+
+#####
+
+from qiskit.circuit import QuantumCircuit
+from qiskit.compiler import transpile
+
+from qiskit.quantum_info import Statevector, state_fidelity
+
+import numpy as np
+from numpy import random
+
+from qiskit.circuit.library import TwoLocal
+from qiskit.circuit import ParameterVector, Parameter
+
+from scipy.special import rel_entr
+
+import time
+
+
+#####
+
 try:
     import pygments
     from pygments.formatters import Terminal256Formatter  # pylint: disable=no-name-in-module
@@ -568,6 +589,104 @@ class QuantumCircuit:
         for inst, qargs, cargs in reversed(self._data):
             inverse_circ._append(inst.inverse(), qargs, cargs)
         return inverse_circ
+
+    #####
+
+    def expressibility(qc, num_bins=75, sample_size = 5000, num_eval=3):
+    
+        class Expressibility:
+            def __init__(self, qc, num_bins, sample_size, num_eval):
+                self.qc = qc
+                self.num_qubits = qc.num_qubits
+            
+                self.num_bins = num_bins
+                self.bin_size = 1/num_bins
+                self.sample_size = sample_size
+            
+                self.num_eval = num_eval
+            
+                self.bin_mid = np.zeros(self.num_bins)
+                self.prob_haar = np.zeros(self.num_bins)
+            
+                self.fidelity_dist = {}
+                self.fidelity_prob = {}
+            
+                self.expr = {}
+                self.avg_expr = 0
+                self.min_expr = 0
+            
+                self.exec_time = {}
+            
+                self.avg_exec_time = 0
+                self.min_expr_exec_time = 0
+            
+            
+            def probability_haar(self):
+                N = 2**self.num_qubits
+    
+                l = np.linspace(0, 1 - self.bin_size, self.num_bins)
+                u = np.linspace(self.bin_size, 1, self.num_bins)
+    
+                self.bin_mid = (l+u)/2
+
+                self.prob_haar = (1-l)**(N-1) - (1-u)**(N-1)
+            
+            
+            def set_properties(self):
+                var = (self.qc).parameters
+            
+                qc_random_transpiled = transpile(self.qc, backend=None)
+            
+                initial_state = Statevector.from_label('0' * self.num_qubits)
+            
+                min_expr_index = 0
+            
+                for k in range(self.num_eval):
+                
+                    fidelity_dist_eval_k = []
+                    fidelity_prob_eval_k = np.zeros(self.num_bins)
+            
+                    circ_eval_start_time = time.time()
+        
+                    for i in range(sample_size):
+                        random_qc_state_1 = initial_state.evolve(qc_random_transpiled.assign_parameters({var[i]: np.random.uniform(low=0.0, high=2*np.pi) for i in range(len(var))}, inplace=False))
+                        random_qc_state_2 = initial_state.evolve(qc_random_transpiled.assign_parameters({var[i]: np.random.uniform(low=0.0, high=2*np.pi) for i in range(len(var))}, inplace=False))
+
+                        fidelity_dist_eval_k.append(state_fidelity(random_qc_state_1, random_qc_state_2))
+            
+                        bin_i = fidelity_dist_eval_k[i] // self.bin_size
+    
+                        fidelity_prob_eval_k[int(bin_i)] += 1/sample_size
+
+                    self.probability_haar()
+            
+                    self.expr["eval_"+str(k+1)] = np.sum(rel_entr(fidelity_prob_eval_k, self.prob_haar))
+    
+                    circ_eval_time = time.time() - circ_eval_start_time
+                    self.exec_time["eval_"+str(k+1)] = circ_eval_time
+        
+                    self.fidelity_dist["eval_"+str(k+1)] = fidelity_dist_eval_k
+        
+                    self.fidelity_prob["eval_"+str(k+1)] = fidelity_prob_eval_k        
+        
+                    self.avg_expr += self.expr["eval_"+str(k+1)]/num_eval
+        
+                    self.avg_exec_time += self.exec_time["eval_"+str(k+1)]/num_eval
+        
+                    if self.expr["eval_"+str(k+1)] <= self.expr["eval_"+str(min_expr_index+1)]:
+                        min_expr_index = k
+    
+                self.min_expr = self.expr["eval_"+str(min_expr_index+1)]
+                self.min_expr_exec_time = self.exec_time["eval_"+str(min_expr_index+1)]
+ 
+    
+        express = Expressibility(qc=qc, num_bins=num_bins, sample_size=sample_size, num_eval=num_eval)
+    
+        express.set_properties()
+    
+        return express
+
+    #####
 
     def repeat(self, reps: int) -> "QuantumCircuit":
         """Repeat this circuit ``reps`` times.

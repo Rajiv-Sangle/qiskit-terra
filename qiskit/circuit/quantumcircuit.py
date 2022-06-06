@@ -62,12 +62,10 @@ from .reset import Reset
 
 #####
 
-# from qiskit import QuantumCircuit
 from qiskit.compiler import transpile
 
 from qiskit.quantum_info import Statevector, state_fidelity
 
-import numpy as np
 from numpy import random
 
 from qiskit.circuit.library import TwoLocal

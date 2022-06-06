@@ -62,7 +62,7 @@ from .reset import Reset
 
 #####
 
-from qiskit.circuit import QuantumCircuit
+# from qiskit import QuantumCircuit
 from qiskit.compiler import transpile
 
 from qiskit.quantum_info import Statevector, state_fidelity
